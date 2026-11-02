@@ -48,13 +48,13 @@ class SoundEngine {
   #combo = 0;
   #lastClearTime = 0;
   #soundTheme = 'glass';
-  #animSpeed = 2;
+  #animSpeed = 4;
   #sc = null;
 
   static get themes() { return SOUND_THEMES; }
   get soundTheme() { return this.#soundTheme; }
   get animSpeed() { return this.#animSpeed; }
-  setAnimSpeed(m) { this.#animSpeed = Math.max(0.25, Math.min(4, m)); }
+  setAnimSpeed(m) { this.#animSpeed = Math.max(0.25, Math.min(8, m)); }
 
   setSoundTheme(theme) {
     if (SOUND_THEMES.includes(theme)) {

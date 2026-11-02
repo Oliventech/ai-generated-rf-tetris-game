@@ -37,7 +37,7 @@ All sounds are generated procedurally using the **Web Audio API** — no audio f
 - Escalating drama for Tetris (4-line) clears
 - Combo hit, T-spin, back-to-back, and perfect clear audio cues
 - Danger zone heartbeat pulse when the stack gets high
-- Adjustable volume and animation speed controls
+- Adjustable volume and clear speed controls
 
 ### Visual Effects
 

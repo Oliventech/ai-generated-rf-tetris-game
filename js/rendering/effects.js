@@ -9,7 +9,7 @@ const CELL_SIZE = 32;
 const COLS = 10;
 const ROWS = 20;
 
-// Line clear timing, in animation time (the speed slider's default of 2× plays it in real time).
+// Line clear timing, in animation time. An animSpeed of 2 plays it in real time; the default is 4.
 const LOOSEN_MS = 100;          // rows sit loose before the first block lets go
 const SWEEP_MS = 750;           // first to last column release, left to right
 const RELEASE_JITTER_MS = 15;   // keeps stacked rows from releasing in perfect lockstep
@@ -18,7 +18,7 @@ const ROW_SOUND_GAP_MS = 90;    // spaces out row sounds on multi-line clears
 const MAX_FRAME_MS = 50;        // a resumed or stalled frame must not jump the animation
 
 const LOOSE_SCALE = 0.86;       // blocks shrink in their row while waiting to let go
-const SLIDE_GRAVITY = 70;       // rows/s² for the stack settling after a clear
+const SLIDE_GRAVITY = 52;       // rows/s² for the stack settling after a clear
 const CUBE_GRAVITY = 44;        // rows/s² for released blocks
 const CUBES_PER_SIDE = 2;       // each block breaks into a 2×2 of smaller cubes
 const POP_SPEED = 6;            // rows/s upward kick when a cube lets go
@@ -43,6 +43,7 @@ class EffectsEngine {
   peelEnd = 0;
   vanishPhase = false;
   stepSeconds = 0;
+  slideStepSeconds = 0;
   lastClockTime = 0;
   cubeSprites = new Map();
   slamLines = [];
@@ -58,7 +59,7 @@ class EffectsEngine {
   pieceTrail = [];
   lockBounce = null;
   soundCallbacks = null;
-  animSpeed = 2;
+  animSpeed = 4;
   visualTheme = 'glass';
 
   get isAnimating() {
@@ -376,8 +377,8 @@ class EffectsEngine {
     }
     // Every cell shares one velocity, so the stack slides as a solid slab.
     for (const fc of this.fallingCells) {
-      fc.velocity += SLIDE_GRAVITY * this.stepSeconds;
-      fc.currentY = Math.min(fc.toY, fc.currentY + fc.velocity * this.stepSeconds);
+      fc.velocity += SLIDE_GRAVITY * this.slideStepSeconds;
+      fc.currentY = Math.min(fc.toY, fc.currentY + fc.velocity * this.slideStepSeconds);
       drawCell(ctx, fc.col, fc.currentY, fc.color, 1, this.visualTheme, CELL_SIZE);
     }
     this.fallingCells = this.fallingCells.filter(fc => fc.currentY < fc.toY);
@@ -387,7 +388,10 @@ class EffectsEngine {
   advanceClock(now) {
     const elapsed = Math.min(Math.max(now - this.lastClockTime, 0), MAX_FRAME_MS);
     this.lastClockTime = now;
-    this.stepSeconds = (elapsed / 1000) * (this.animSpeed / 2);
+    const pace = this.animSpeed / 2;
+    this.stepSeconds = (elapsed / 1000) * pace;
+    // The stack never drops faster than real time: any quicker reads as a snap, not a fall.
+    this.slideStepSeconds = (elapsed / 1000) * Math.min(pace, 1);
   }
 
   /** Begin a line clear: rows come loose, then let go of their blocks left to right. */

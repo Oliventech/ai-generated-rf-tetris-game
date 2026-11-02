@@ -12,8 +12,8 @@ import { DemoCycler } from './demo-cycler.js';
 
 const LOCK_DELAY = 500; // ms
 const IS_MOBILE = window.matchMedia('(max-width: 768px)').matches || 'ontouchstart' in window;
-const SPEED_STOPS = [0.25, 1, 2, 4];
-const SPEED_LABELS = ['0.5×', '1×', '2×', '4×'];
+const SPEED_STOPS = [1, 2, 4, 8];
+const SPEED_LABELS = ['0.25×', '0.5×', '1×', '2×'];
 const DROP_SPEED_STOPS = [0.5, 1, 2, 4, 6, 8, 10];
 const DROP_SPEED_LABELS = ['0.5×', '1×', '2×', '4×', '6×', '8×', '10×'];
 
@@ -53,6 +53,7 @@ class Game {
   #lastPiecePos = null; // for trail tracking
   #demoFrozen = false;   // true during demo setting changes
   #demoFreezeTime = 0;   // timestamp when freeze started (safety timeout)
+  #playerSpeed = '2';    // the clear speed the player chose, restored when the demo stops
 
   constructor() {
     this.#board = new Board();
@@ -167,7 +168,7 @@ class Game {
 
     const speedSlider = document.getElementById('speed-slider');
     speedSlider?.addEventListener('input', (e) => {
-      this.#syncSpeed(e.target.value);
+      this.#setPlayerSpeed(e.target.value);
     });
 
     const dropSpeedSlider = document.getElementById('drop-speed-slider');
@@ -241,7 +242,7 @@ class Game {
 
     const mobileSpeed = document.getElementById('mobile-speed');
     mobileSpeed?.addEventListener('input', (e) => {
-      this.#syncSpeed(e.target.value);
+      this.#setPlayerSpeed(e.target.value);
     });
 
     const mobileDropSpeed = document.getElementById('mobile-drop-speed');
@@ -265,6 +266,11 @@ class Game {
   }
 
   /** Sync speed controls across desktop, mobile, and demo panels. */
+  #setPlayerSpeed(value) {
+    this.#playerSpeed = value;
+    this.#syncSpeed(value);
+  }
+
   #syncSpeed(value) {
     const idx = Number(value);
     const mult = SPEED_STOPS[idx];
@@ -294,7 +300,7 @@ class Game {
     });
 
     document.getElementById('demo-speed')?.addEventListener('input', (e) => {
-      this.#syncSpeed(e.target.value);
+      this.#setPlayerSpeed(e.target.value);
     });
 
     document.getElementById('demo-drop-speed')?.addEventListener('input', (e) => {
@@ -805,6 +811,7 @@ class Game {
       // Stop demo
       this.#autoPlayer.stop();
       this.#demoCycler.stop();
+      this.#syncSpeed(this.#playerSpeed);
       this.#demoFrozen = false;
       this.#state = 'gameOver';
       this.#currentPiece = null;
@@ -847,6 +854,7 @@ class Game {
     if (this.#autoPlayer.active) {
       this.#autoPlayer.stop();
       this.#demoCycler.stop();
+      this.#syncSpeed(this.#playerSpeed);
       this.#demoFrozen = false;
       this.#btnDemo?.classList.remove('active');
     }

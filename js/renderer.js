@@ -52,13 +52,13 @@ class Renderer {
   // Sound callbacks for animation-synced audio
 
   // Animation speed multiplier (1 = normal, 2 = 2× faster)
-  #animSpeed = 2;
+  #animSpeed = 4;
 
   // Visual theme for block rendering (matches sound theme)
   #visualTheme = 'glass';
 
   /** Set animation speed multiplier. */
-  setAnimSpeed(m) { this.#fx.animSpeed = Math.max(0.25, Math.min(4, m)); }
+  setAnimSpeed(m) { this.#fx.animSpeed = Math.max(0.25, Math.min(8, m)); }
 
   /** Set visual theme for block rendering. */
   setVisualTheme(theme) { this.#visualTheme = theme; this.#fx.visualTheme = theme; }
