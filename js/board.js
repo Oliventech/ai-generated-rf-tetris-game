@@ -6,6 +6,7 @@ const COLS = 10;
 const ROWS = 20;
 const HIDDEN_ROWS = 2;
 const TOTAL_ROWS = ROWS + HIDDEN_ROWS;
+const MAX_FILL_DEPTH = 2; // loose blocks drop into a gap this deep; longer cracks stay open
 
 class Board {
   #grid;
@@ -62,8 +63,8 @@ class Board {
   }
 
   /**
-   * Clear completed lines and shift the rows above them down intact.
-   * Holes stay where they are, so a clear can never complete another row.
+   * Clear completed lines, shift the rows above them down, then let loose blocks
+   * settle. Settling can complete more rows; game.js clears those once the slide ends.
    * Returns falling cell data for the slide animation.
    */
   clearLines() {
@@ -86,40 +87,62 @@ class Board {
       linesCleared: fullRows.length,
       clearedRows,
       clearedRowColors,
-      fallingCells: this.#shiftRowsDown(fullRows),
+      fallingCells: this.#removeRows(fullRows),
     };
   }
 
   /**
-   * Remove the given rows, moving each row above down by the number removed below it.
+   * Remove the given rows and settle what is left, one column at a time.
    * Records movement data for the slide animation.
    */
-  #shiftRowsDown(fullRows) {
+  #removeRows(fullRows) {
     const fallingCells = [];
-    let drop = 0;
-    for (let r = TOTAL_ROWS - 1; r >= 0; r--) {
-      if (fullRows.includes(r)) {
-        drop++;
-        continue;
-      }
-      if (drop === 0) continue;
-      this.#grid[r + drop] = this.#grid[r];
-      for (let c = 0; c < COLS; c++) {
-        const color = this.#grid[r + drop][c];
-        if (color !== null) {
+    for (let c = 0; c < COLS; c++) {
+      const column = this.#settleColumn(this.#shiftedColumn(c, fullRows));
+      for (let r = 0; r < TOTAL_ROWS; r++) {
+        const cell = column[r];
+        this.#grid[r][c] = cell ? cell.color : null;
+        if (cell && cell.fromRow !== r) {
           fallingCells.push({
             col: c,
-            fromRow: r - HIDDEN_ROWS,
-            toRow: r + drop - HIDDEN_ROWS,
-            color,
+            fromRow: cell.fromRow - HIDDEN_ROWS,
+            toRow: r - HIDDEN_ROWS,
+            color: cell.color,
           });
         }
       }
     }
-    for (let r = 0; r < drop; r++) {
-      this.#grid[r] = new Array(COLS).fill(null);
-    }
     return fallingCells;
+  }
+
+  /** A column with the given rows taken out; each cell remembers the row it started in. */
+  #shiftedColumn(c, fullRows) {
+    const kept = [];
+    for (let r = 0; r < TOTAL_ROWS; r++) {
+      if (fullRows.includes(r)) continue;
+      const color = this.#grid[r][c];
+      kept.push(color !== null ? { color, fromRow: r } : null);
+    }
+    return [...new Array(fullRows.length).fill(null), ...kept];
+  }
+
+  /**
+   * Drop the run of blocks at the top of a column into the gap below it, and repeat.
+   * Stops at a gap deeper than MAX_FILL_DEPTH, unless nothing at all is under the run.
+   */
+  #settleColumn(column) {
+    for (;;) {
+      const top = column.findIndex(Boolean);
+      if (top < 0) return column;
+      let gap = top;
+      while (gap < TOTAL_ROWS && column[gap]) gap++;
+      let floor = gap;
+      while (floor < TOTAL_ROWS && !column[floor]) floor++;
+      const depth = floor - gap;
+      if (depth === 0 || (depth > MAX_FILL_DEPTH && floor < TOTAL_ROWS)) return column;
+      column.splice(gap, depth);
+      column.unshift(...new Array(depth).fill(null));
+    }
   }
 
   /**

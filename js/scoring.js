@@ -54,7 +54,7 @@ class Scoring {
    * Returns { leveledUp, pointsAwarded, isBackToBack, combo }.
    */
   addLineClear(count, tSpinType = 'none') {
-    if (count < 0 || count > 4) return { leveledUp: false, pointsAwarded: 0, isBackToBack: false, combo: 0 };
+    if (count < 0) return { leveledUp: false, pointsAwarded: 0, isBackToBack: false, combo: 0 };
 
     // Combo tracking
     this.#combo++;
@@ -129,12 +129,12 @@ class Scoring {
     if (tSpinType === 'mini') {
       return count === 0 ? MINI_TSPIN_POINTS.none : MINI_TSPIN_POINTS.single;
     }
-    return LINE_POINTS[count] ?? 0;
+    return LINE_POINTS[Math.min(count, LINE_POINTS.length - 1)];
   }
 
   #applyBonuses(basePoints, count, tSpinType) {
     let total = basePoints;
-    const isDifficult = count === 4 || (tSpinType !== 'none' && count > 0);
+    const isDifficult = count >= 4 || (tSpinType !== 'none' && count > 0);
     let isBackToBack = false;
 
     if (isDifficult && this.#lastClearWasDifficult) {

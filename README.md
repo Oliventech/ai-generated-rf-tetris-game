@@ -42,7 +42,7 @@ All sounds are generated procedurally using the **Web Audio API** — no audio f
 ### Visual Effects
 
 - **Peeling line clear**: full rows come loose, then blocks let go left to right and tumble off the board in an arc; multi-line clears peel together as one thick ribbon
-- **Sliding stack**: the rows above settle as one solid slab under gravity, and holes stay where they are
+- **Sliding stack**: the rows above slide down together, loose blocks at the top of a column drop into gaps up to 2 cells deep, and any row that completes clears too; longer cracks stay open
 - **Per-theme cell rendering** — each of the 9 themes has a distinct visual style for both board cells and preview panels
 - Screen shake on hard drops
 - Piece trail motion blur

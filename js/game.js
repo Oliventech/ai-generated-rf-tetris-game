@@ -473,6 +473,16 @@ class Game {
         this.#lockStartTime = timestamp;
       }
 
+      // Blocks that settled into a gap may have completed more rows.
+      const chain = this.#board.clearLines();
+      if (chain.linesCleared > 0) {
+        this.#registerClear(chain, 'none');
+        this.#wasAnimating = true;
+        this.#render();
+        this.#animFrameId = requestAnimationFrame((t) => this.#gameLoop(t));
+        return true;
+      }
+
       // The next piece enters once the stack has finished sliding.
       if (!this.#currentPiece) this.#spawnPiece();
       this.#flushInputBuffer();
@@ -654,16 +664,10 @@ class Game {
     this.#renderer.triggerLockBounce(this.#currentPiece);
     this.#lockTimer = null;
 
-    const { linesCleared, clearedRows, clearedRowColors, fallingCells } = this.#board.clearLines();
+    const clear = this.#board.clearLines();
+    const { linesCleared } = clear;
     if (linesCleared > 0) {
-      const result = this.#scoring.addLineClear(linesCleared, tSpinType);
-      this.#renderer.triggerLineClearEffect(clearedRows, clearedRowColors);
-      this.#renderer.triggerFallingCells(fallingCells);
-      this.#showClearFeedback(tSpinType, linesCleared, result, clearedRows);
-      if (result.leveledUp) {
-        this.#sound.playLevelUp();
-        this.#renderer.triggerLevelUpEffect(this.#scoring.level);
-      }
+      this.#registerClear(clear, tSpinType);
     } else {
       this.#scoring.resetCombo();
       this.#sound.resetCombo();
@@ -681,6 +685,18 @@ class Game {
     }
 
     this.#spawnPiece();
+  }
+
+  /** Score a line clear and start its animation. */
+  #registerClear(clear, tSpinType) {
+    const result = this.#scoring.addLineClear(clear.linesCleared, tSpinType);
+    this.#renderer.triggerLineClearEffect(clear.clearedRows, clear.clearedRowColors);
+    this.#renderer.triggerFallingCells(clear.fallingCells);
+    this.#showClearFeedback(tSpinType, clear.linesCleared, result, clear.clearedRows);
+    if (result.leveledUp) {
+      this.#sound.playLevelUp();
+      this.#renderer.triggerLevelUpEffect(this.#scoring.level);
+    }
   }
 
   #updateDangerPulse(deltaMs) {
