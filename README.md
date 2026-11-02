@@ -4,7 +4,7 @@ A fully-featured, browser-based Tetris game with dramatic sound effects, eye-cat
 
 ## Play Now
 
-[**Play the game live**](https://marifali2000.github.io/ai-generated-rf-tetris-game/)
+[**Play the game live**](https://oliventech.github.io/ai-generated-rf-tetris-game/)
 
 ## What Is This?
 
