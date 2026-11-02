@@ -62,17 +62,11 @@ class Board {
   }
 
   /**
-   * Clear completed lines (single pass — no cascade).
-   * Finds full rows, removes them, applies gravity once.
-   * Cascade detection is handled by game.js after animation finishes.
-   * Returns falling cell data for smooth visual animation.
+   * Clear completed lines and shift the rows above them down intact.
+   * Holes stay where they are, so a clear can never complete another row.
+   * Returns falling cell data for the slide animation.
    */
   clearLines() {
-    const allClearedRows = [];
-    const allClearedRowColors = [];
-    const fallingCells = [];
-
-    // Find full rows (single pass only)
     const fullRows = [];
     for (let r = 0; r < TOTAL_ROWS; r++) {
       if (this.#grid[r].every(cell => cell !== null)) {
@@ -85,57 +79,47 @@ class Board {
     }
 
     // Record for visual effects (convert to visible row index)
-    for (const r of fullRows) {
-      allClearedRows.push(r - HIDDEN_ROWS);
-      allClearedRowColors.push([...this.#grid[r]]);
-    }
-
-    // Remove full rows
-    for (const r of fullRows) {
-      this.#grid[r] = new Array(COLS).fill(null);
-    }
-
-    // Per-column gravity: track movements for animation
-    this.#applyColumnGravity(fallingCells);
+    const clearedRows = fullRows.map(r => r - HIDDEN_ROWS);
+    const clearedRowColors = fullRows.map(r => [...this.#grid[r]]);
 
     return {
       linesCleared: fullRows.length,
-      clearedRows: allClearedRows,
-      clearedRowColors: allClearedRowColors,
-      fallingCells,
+      clearedRows,
+      clearedRowColors,
+      fallingCells: this.#shiftRowsDown(fullRows),
     };
   }
 
   /**
-   * Drop every cell in each column to the lowest available position.
-   * Records movement data for smooth visual animation.
+   * Remove the given rows, moving each row above down by the number removed below it.
+   * Records movement data for the slide animation.
    */
-  #applyColumnGravity(fallingCells) {
-    for (let c = 0; c < COLS; c++) {
-      // Collect non-null cells from bottom to top
-      const cells = [];
-      for (let r = TOTAL_ROWS - 1; r >= 0; r--) {
-        if (this.#grid[r][c] !== null) {
-          cells.push({ row: r, color: this.#grid[r][c] });
-          this.#grid[r][c] = null;
-        }
+  #shiftRowsDown(fullRows) {
+    const fallingCells = [];
+    let drop = 0;
+    for (let r = TOTAL_ROWS - 1; r >= 0; r--) {
+      if (fullRows.includes(r)) {
+        drop++;
+        continue;
       }
-      // Place them back starting from bottom
-      let writeRow = TOTAL_ROWS - 1;
-      for (const cell of cells) {
-        this.#grid[writeRow][c] = cell.color;
-        if (writeRow !== cell.row) {
-          // This cell moved — record for animation (use visible row indices)
+      if (drop === 0) continue;
+      this.#grid[r + drop] = this.#grid[r];
+      for (let c = 0; c < COLS; c++) {
+        const color = this.#grid[r + drop][c];
+        if (color !== null) {
           fallingCells.push({
             col: c,
-            fromRow: cell.row - HIDDEN_ROWS,
-            toRow: writeRow - HIDDEN_ROWS,
-            color: cell.color,
+            fromRow: r - HIDDEN_ROWS,
+            toRow: r + drop - HIDDEN_ROWS,
+            color,
           });
         }
-        writeRow--;
       }
     }
+    for (let r = 0; r < drop; r++) {
+      this.#grid[r] = new Array(COLS).fill(null);
+    }
+    return fallingCells;
   }
 
   /**

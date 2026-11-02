@@ -30,11 +30,6 @@ class Renderer {
   #bgGradient = null;
   #frameCount = 0;
 
-  // Dramatic line clear animation state
-
-  // Row-by-row vanish: each cleared row's cells shrink and fade  // { row, cells: [{col, color, scale, alpha, delay}], startFrame }
-  // vanishPhase lives on EffectsEngine (#fx.vanishPhase)
-
   // Hard drop slam lines
 
   // Piece lock pulse
@@ -42,8 +37,6 @@ class Renderer {
   // Glass crack lines
 
   // Floating combo text
-
-  // Animated falling cells after line clear
 
   // Game over collapse
 
@@ -120,46 +113,11 @@ class Renderer {
   }
 
   /**
-   * Row-by-row line clear animation: each row highlights in color, cells shrink and vanish
-   * one row at a time with staggered delay. No white flash. Particles burst from each cell.
+   * Line clear animation: rows come loose, blocks let go left to right and fall off the board.
    */
   triggerLineClearEffect(clearedRows, clearedRowColors) {
-    const count = clearedRows.length;
-    const isTetris = count >= 4;
-    const ROW_STAGGER = Math.round(30 / this.#fx.animSpeed);
-
-    this.#fx.vanishPhase = true;
-    this.#fx.vanishStartTime = performance.now();
-    this.#fx.vanishingRows = this.#buildVanishRows(clearedRows, clearedRowColors, ROW_STAGGER);
-
-    this.#fx.shakeAmount = isTetris ? 12 : 3 + count * 2;
-    this.#fx.addShockwaves(clearedRows, count, isTetris);
-    this.#fx.clearAnimDuration = count * ROW_STAGGER + Math.round(80 / this.#fx.animSpeed) + ROW_STAGGER;
-    this.#fx.clearAnimTimer = this.#fx.clearAnimDuration;
-    this.#fx.starSpeedBoost = 2 + count;
-  }
-
-  /** Build per-row animation data for the vanishing row effect. */
-  #buildVanishRows(clearedRows, clearedRowColors, rowStagger) {
-    const rows = [];
-    for (let i = 0; i < clearedRows.length; i++) {
-      const colors = clearedRowColors[i];
-      const cells = [];
-      for (let c = 0; c < colors.length; c++) {
-        if (!colors[c]) continue;
-        cells.push({
-          col: c, color: colors[c], scale: 1, alpha: 1,
-          delay: Math.round(c * 2 / this.#fx.animSpeed),
-          shrinking: false, glowAlpha: 0,
-        });
-      }
-      rows.push({
-        row: clearedRows[i], cells, delay: i * rowStagger,
-        highlightAlpha: 0, phase: 'highlight', phaseTimer: 0,
-        rowIndex: i, soundPlayed: false, clearSoundPlayed: false,
-      });
-    }
-    return rows;
+    this.#fx.startPeel(clearedRows, clearedRowColors);
+    this.#fx.starSpeedBoost = 2 + clearedRows.length;
   }
 
   /**
@@ -211,8 +169,7 @@ class Renderer {
   }
 
   /**
-   * Animate cells sliding down after line clears.
-   * Slow, visible fall with gentle bounce at landing.
+   * Slide the rows above a clear down once the peel has finished.
    */
   triggerFallingCells(fallingCells) {
     if (!fallingCells || fallingCells.length === 0) return;
@@ -224,11 +181,6 @@ class Renderer {
         currentY: fc.fromRow,
         color: fc.color,
         velocity: 0,
-        gravity: (0.08 + Math.random() * 0.04) * this.#fx.animSpeed, // fast snap into place
-        bounces: 0,
-        delay: 0,
-        started: false,
-        landGlow: 0, // glow when cell lands
       });
     }
   }
@@ -238,7 +190,7 @@ class Renderer {
     const canvasW = COLS * CELL_SIZE;
     const canvasH = ROWS * CELL_SIZE;
     this.#fx.frameCount++;
-    if (this.#fx.clearAnimTimer > 0) this.#fx.clearAnimTimer--;
+    this.#fx.advanceClock(performance.now());
 
     ctx.save();
     this.#applyScreenShake(ctx);
@@ -251,7 +203,7 @@ class Renderer {
     this.#fx.drawLockPulse(ctx);
     this.#fx.drawLockBounce(ctx);
     this.#drawFlashOverlay(ctx, canvasW, canvasH);
-    this.#fx.drawShockwaves(ctx);
+    this.#fx.drawPeelCubes(ctx);
     this.#tickParticles(ctx);
     this.#fx.drawFloatingTexts(ctx);
 
@@ -289,7 +241,7 @@ class Renderer {
     }
     this.#fx.drawDangerZone(ctx);
     this.#fx.drawFallingCells(ctx);
-    this.#fx.drawVanishingRows(ctx);
+    this.#fx.drawPeelingRows(ctx);
     this.#fx.drawCrackLines(ctx);
     this.#fx.drawRowFlashes(ctx);
     this.#fx.drawSweepBeams(ctx);
@@ -337,10 +289,6 @@ class Renderer {
     this.#overlayEl.classList.add('hidden');
   }
 
-  /**
-   * Draw vanishing rows — row-by-row highlight then cell shrink animation.
-   * Each row: highlight with color glow → cells shrink to nothing → particles burst.
-   */
   #drawGrid(ctx) {
     ctx.strokeStyle = 'rgba(27, 58, 92, 0.35)';
     ctx.lineWidth = 0.5;

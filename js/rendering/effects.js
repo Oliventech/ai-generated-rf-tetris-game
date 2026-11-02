@@ -2,12 +2,29 @@
  * EffectsEngine — visual effects, particles, animations.
  * Extracted from Renderer for modularity (< 1000 lines per file).
  */
-import { drawCell, lightenColor, darkenColor, remapColor, getThemeAccent } from './cell-themes.js';
+import { drawCell, remapColor, getThemeAccent } from './cell-themes.js';
 import { Particle, MAX_PARTICLES, STARS } from './particles.js';
 
 const CELL_SIZE = 32;
 const COLS = 10;
 const ROWS = 20;
+
+// Line clear timing, in animation time (the speed slider's default of 2× plays it in real time).
+const LOOSEN_MS = 100;          // rows sit loose before the first block lets go
+const SWEEP_MS = 750;           // first to last column release, left to right
+const RELEASE_JITTER_MS = 15;   // keeps stacked rows from releasing in perfect lockstep
+const SLIDE_DELAY_MS = 50;      // pause between the last release and the slide
+const ROW_SOUND_GAP_MS = 90;    // spaces out row sounds on multi-line clears
+const MAX_FRAME_MS = 50;        // a resumed or stalled frame must not jump the animation
+
+const LOOSE_SCALE = 0.86;       // blocks shrink in their row while waiting to let go
+const SLIDE_GRAVITY = 70;       // rows/s² for the stack settling after a clear
+const CUBE_GRAVITY = 44;        // rows/s² for released blocks
+const CUBES_PER_SIDE = 2;       // each block breaks into a 2×2 of smaller cubes
+const POP_SPEED = 6;            // rows/s upward kick when a cube lets go
+const CUBE_DRIFT = 0.8;         // rows/s of sideways scatter
+const CUBE_SPIN = 12;           // rad/s
+const CUBE_GROWTH = 0.35;       // extra scale after falling the full board height
 
 class EffectsEngine {
   // Animation state
@@ -20,12 +37,14 @@ class EffectsEngine {
   rowFlashData = [];
   sweepBeams = [];
   dissolveGrid = [];
-  shockwaves = [];
-  clearAnimTimer = 0;
-  clearAnimDuration = 0;
-  vanishingRows = [];
+  peelRows = [];
+  peelCubes = [];
+  peelElapsed = 0;
+  peelEnd = 0;
   vanishPhase = false;
-  vanishStartTime = 0;
+  stepSeconds = 0;
+  lastClockTime = 0;
+  cubeSprites = new Map();
   slamLines = [];
   lockPulse = null;
   crackLines = [];
@@ -43,23 +62,17 @@ class EffectsEngine {
   visualTheme = 'glass';
 
   get isAnimating() {
-    // Safety: force-clear stuck animations after 5 seconds
-    if (this.vanishPhase && performance.now() - this.vanishStartTime > 5000) {
-      this.vanishPhase = false;
-      this.vanishingRows = [];
-    }
-    return this.vanishPhase === true;
+    return this.vanishPhase || this.fallingCells.length > 0;
   }
 
   /** Reset all animation state — call on game start/restart. */
   resetAnimations() {
     this.vanishPhase = false;
-    this.vanishStartTime = 0;
-    this.vanishingRows = [];
+    this.peelRows = [];
+    this.peelCubes = [];
     this.fallingCells = [];
     this.collapseActive = false;
     this.collapseGrid = [];
-    this.clearAnimTimer = 0;
     this.shakeAmount = 0;
   }
 
@@ -140,47 +153,6 @@ class EffectsEngine {
           });
         }
       }
-    }
-  }
-
-  addShockwaves(clearedRows, count, isTetris) {
-    const accent = getThemeAccent(this.visualTheme);
-    const midRow = clearedRows[Math.floor(clearedRows.length / 2)];
-    const centerY = midRow * CELL_SIZE + CELL_SIZE / 2;
-    this.shockwaves.push({
-      cx: (COLS * CELL_SIZE) / 2,
-      cy: centerY,
-      radius: 5,
-      maxRadius: 350 + count * 60,
-      alpha: 0.7 + count * 0.1,
-      color: isTetris ? '#ffe080' : accent.slam,
-      lineWidth: 3 + count,
-    });
-
-    // Second ring for double+ clears
-    if (count >= 2) {
-      this.shockwaves.push({
-        cx: (COLS * CELL_SIZE) / 2,
-        cy: centerY,
-        radius: 5,
-        maxRadius: 250 + count * 40,
-        alpha: 0.4,
-        color: '#ffffff',
-        lineWidth: 2,
-      });
-    }
-
-    if (isTetris) {
-      // Third dramatic ring for Tetris
-      this.shockwaves.push({
-        cx: (COLS * CELL_SIZE) / 2,
-        cy: centerY,
-        radius: 5,
-        maxRadius: 500,
-        alpha: 0.35,
-        color: '#ffe080',
-        lineWidth: 5,
-      });
     }
   }
 
@@ -402,167 +374,152 @@ class EffectsEngine {
       }
       return;
     }
+    // Every cell shares one velocity, so the stack slides as a solid slab.
     for (const fc of this.fallingCells) {
-      if (fc.landed) {
-        this.#drawLandedCell(ctx, fc);
-      } else {
-        this.#drawFallingCell(ctx, fc);
-      }
+      fc.velocity += SLIDE_GRAVITY * this.stepSeconds;
+      fc.currentY = Math.min(fc.toY, fc.currentY + fc.velocity * this.stepSeconds);
+      drawCell(ctx, fc.col, fc.currentY, fc.color, 1, this.visualTheme, CELL_SIZE);
     }
-    this.fallingCells = this.fallingCells.filter(fc => !fc.done);
+    this.fallingCells = this.fallingCells.filter(fc => fc.currentY < fc.toY);
   }
 
-  #drawLandedCell(ctx, fc) {
-    fc.landGlow -= 0.08;
-    drawCell(ctx, fc.col, fc.toY, fc.color, 1, this.visualTheme, CELL_SIZE);
-    if (fc.landGlow > 0) {
-      ctx.save();
-      ctx.globalAlpha = fc.landGlow * 0.5;
-      ctx.fillStyle = fc.color;
-      ctx.shadowColor = fc.color;
-      ctx.shadowBlur = 15;
-      ctx.fillRect(fc.col * CELL_SIZE, fc.toY * CELL_SIZE, CELL_SIZE, CELL_SIZE);
-      ctx.restore();
-    } else {
-      fc.done = true;
-    }
+  /** Advance the animation clock by real elapsed time, scaled by the speed slider. */
+  advanceClock(now) {
+    const elapsed = Math.min(Math.max(now - this.lastClockTime, 0), MAX_FRAME_MS);
+    this.lastClockTime = now;
+    this.stepSeconds = (elapsed / 1000) * (this.animSpeed / 2);
   }
 
-  #drawFallingCell(ctx, fc) {
-    fc.velocity += fc.gravity;
-    fc.currentY += fc.velocity;
-    if (fc.currentY >= fc.toY) {
-      fc.currentY = fc.toY;
-      fc.velocity = 0;
-      fc.landed = true;
-      fc.landGlow = 1;
-    }
-    if (fc.velocity > 0.03) {
-      ctx.save();
-      ctx.globalAlpha = 0.15;
-      drawCell(ctx, fc.col, fc.currentY - 0.4, fc.color, 0.15, this.visualTheme, CELL_SIZE);
-      ctx.globalAlpha = 0.08;
-      drawCell(ctx, fc.col, fc.currentY - 0.7, fc.color, 0.08, this.visualTheme, CELL_SIZE);
-      ctx.restore();
-    }
-    drawCell(ctx, fc.col, fc.currentY, fc.color, 1, this.visualTheme, CELL_SIZE);
+  /** Begin a line clear: rows come loose, then let go of their blocks left to right. */
+  startPeel(clearedRows, clearedRowColors) {
+    const count = clearedRows.length;
+    const lastRelease = LOOSEN_MS + SWEEP_MS + RELEASE_JITTER_MS;
+    this.peelRows = clearedRows.map((row, i) => ({
+      row,
+      rowIndex: i,
+      cells: clearedRowColors[i].map((color, col) => ({
+        col,
+        color,
+        releaseAt: LOOSEN_MS + (col / (COLS - 1)) * SWEEP_MS + Math.random() * RELEASE_JITTER_MS,
+      })),
+      looseSoundAt: i * ROW_SOUND_GAP_MS,
+      clearSoundAt: lastRelease - (count - 1 - i) * ROW_SOUND_GAP_MS,
+      looseSoundPlayed: false,
+      clearSoundPlayed: false,
+    }));
+    this.peelElapsed = 0;
+    this.peelEnd = lastRelease + SLIDE_DELAY_MS;
+    this.vanishPhase = true;
   }
 
-  drawVanishingRows(ctx) {
-    if (this.vanishingRows.length === 0) {
-      if (this.vanishPhase) this.vanishPhase = false;
-      return;
-    }
-
-    let allDone = true;
-    for (const vr of this.vanishingRows) {
-      if (vr.delay > 0) {
-        vr.delay--;
-        for (const cell of vr.cells) {
-          drawCell(ctx, cell.col, vr.row, cell.color, 1, this.visualTheme, CELL_SIZE);
+  drawPeelingRows(ctx) {
+    if (!this.vanishPhase) return;
+    this.peelElapsed += this.stepSeconds * 1000;
+    for (const pr of this.peelRows) {
+      this.#playPeelSounds(pr);
+      pr.cells = pr.cells.filter((cell) => {
+        if (this.peelElapsed >= cell.releaseAt) {
+          this.#releaseCubes(cell, pr.row);
+          return false;
         }
-        allDone = false;
-        continue;
-      }
-
-      vr.phaseTimer++;
-
-      if (vr.phase === 'highlight') {
-        this.#drawVanishHighlight(ctx, vr);
-        allDone = false;
-      } else if (vr.phase === 'shrink') {
-        const rowDone = this.#drawVanishShrink(ctx, vr);
-        if (rowDone) vr.phase = 'done';
-        allDone = allDone && rowDone;
-      }
+        this.#drawLooseCell(ctx, cell, pr.row);
+        return true;
+      });
     }
-
-    this.vanishingRows = this.vanishingRows.filter(vr => vr.phase !== 'done');
-    if (this.vanishingRows.length === 0 && this.vanishPhase) {
+    if (this.peelElapsed >= this.peelEnd) {
       this.vanishPhase = false;
+      this.peelRows = [];
     }
   }
 
-  /** Highlight phase: glow ramps up over ~20 frames, then transitions to shrink. */
-  #drawVanishHighlight(ctx, vr) {
-    vr.highlightAlpha = Math.min(1, vr.phaseTimer / Math.round(10 / this.animSpeed));
-
-    if (!vr.soundPlayed) {
-      vr.soundPlayed = true;
-      this.soundCallbacks.onRowHighlight(vr.rowIndex);
+  #playPeelSounds(pr) {
+    if (!pr.looseSoundPlayed && this.peelElapsed >= pr.looseSoundAt) {
+      pr.looseSoundPlayed = true;
+      this.soundCallbacks.onRowHighlight(pr.rowIndex);
     }
-    for (const cell of vr.cells) {
-      drawCell(ctx, cell.col, vr.row, cell.color, 1, this.visualTheme, CELL_SIZE);
+    if (!pr.clearSoundPlayed && this.peelElapsed >= pr.clearSoundAt) {
+      pr.clearSoundPlayed = true;
+      this.soundCallbacks.onRowCleared(pr.rowIndex);
     }
+  }
 
+  /** A block still in its row, drawn smaller over a dark backing so the row reads as coming apart. */
+  #drawLooseCell(ctx, cell, row) {
+    const cx = (cell.col + 0.5) * CELL_SIZE;
+    const cy = (row + 0.5) * CELL_SIZE;
     ctx.save();
-    const rawTint = vr.cells.length > 0 ? vr.cells[0].color : '#80c0ff';
-    const tintColor = remapColor(rawTint, this.visualTheme);
-    ctx.globalAlpha = vr.highlightAlpha * 0.4;
-    ctx.fillStyle = tintColor;
-    ctx.shadowColor = tintColor;
-    ctx.shadowBlur = 20 * vr.highlightAlpha;
-    ctx.fillRect(0, vr.row * CELL_SIZE, COLS * CELL_SIZE, CELL_SIZE);
+    ctx.fillStyle = 'rgba(0,0,0,0.5)';
+    ctx.fillRect(cell.col * CELL_SIZE, row * CELL_SIZE, CELL_SIZE, CELL_SIZE);
+    ctx.translate(cx, cy);
+    ctx.scale(LOOSE_SCALE, LOOSE_SCALE);
+    ctx.translate(-cx, -cy);
+    drawCell(ctx, cell.col, row, cell.color, 1, this.visualTheme, CELL_SIZE);
     ctx.restore();
+  }
 
-    if (vr.phaseTimer >= Math.round(15 / this.animSpeed)) {
-      vr.phase = 'shrink';
-      vr.phaseTimer = 0;
-      if (!vr.clearSoundPlayed) {
-        vr.clearSoundPlayed = true;
-        this.soundCallbacks.onRowCleared(vr.rowIndex);
+  /** Break a block into small cubes; its right half lets go a moment later, keeping the sweep smooth. */
+  #releaseCubes(cell, row) {
+    const columnGap = SWEEP_MS / (COLS - 1) / 1000;
+    const sprite = this.#cubeSprite(cell.color);
+    for (let cx = 0; cx < CUBES_PER_SIDE; cx++) {
+      for (let cy = 0; cy < CUBES_PER_SIDE; cy++) {
+        const y = row + (cy + 0.5) / CUBES_PER_SIDE;
+        this.peelCubes.push({
+          x: cell.col + (cx + 0.5) / CUBES_PER_SIDE,
+          y,
+          startY: y,
+          wait: (cx / CUBES_PER_SIDE) * columnGap,
+          vx: (Math.random() - 0.5) * CUBE_DRIFT,
+          vy: -POP_SPEED * (0.9 + Math.random() * 0.2),
+          rotation: 0,
+          spin: (Math.random() - 0.5) * CUBE_SPIN,
+          tumble: Math.random() * Math.PI * 2,
+          tumbleSpeed: (Math.random() - 0.5) * CUBE_SPIN,
+          sprite,
+        });
       }
     }
   }
 
-  /** Shrink phase: cells shrink and fade left-to-right with particles. Returns true when done. */
-  #drawVanishShrink(ctx, vr) {
-    let rowDone = true;
-    for (const cell of vr.cells) {
-      if (cell.delay > 0) {
-        cell.delay--;
-        drawCell(ctx, cell.col, vr.row, cell.color, cell.alpha, this.visualTheme, CELL_SIZE);
-        rowDone = false;
-        continue;
-      }
-      cell.scale *= (1 - Math.max(0.10 * this.animSpeed, 0.05));
-      cell.alpha *= (1 - Math.max(0.08 * this.animSpeed, 0.04));
-      if (!cell.particlesSpawned) {
-        cell.particlesSpawned = true;
-        const cx = cell.col * CELL_SIZE + CELL_SIZE / 2;
-        const cy = vr.row * CELL_SIZE + CELL_SIZE / 2;
-        const pColor = remapColor(cell.color, this.visualTheme);
-        for (let p = 0; p < 5; p++) {
-          if (this.particles.length < MAX_PARTICLES) {
-            this.particles.push(new Particle(cx, cy, pColor));
-          }
-        }
-      }
-      if (cell.scale > 0.05 && cell.alpha > 0.05) {
-        this.#drawShrinkingCell(ctx, cell, vr.row);
-        rowDone = false;
-      }
+  /** A block drawn once per theme and colour, so a thick ribbon stays cheap to draw. */
+  #cubeSprite(color) {
+    const key = `${this.visualTheme}:${color}`;
+    let sprite = this.cubeSprites.get(key);
+    if (!sprite) {
+      sprite = document.createElement('canvas');
+      sprite.width = CELL_SIZE;
+      sprite.height = CELL_SIZE;
+      drawCell(sprite.getContext('2d'), 0, 0, color, 1, this.visualTheme, CELL_SIZE);
+      this.cubeSprites.set(key, sprite);
     }
-    return rowDone;
+    return sprite;
   }
 
-  /** Draw a single shrinking cell centered on its grid position. */
-  #drawShrinkingCell(ctx, cell, row) {
-    const px = cell.col * CELL_SIZE + CELL_SIZE / 2;
-    const py = row * CELL_SIZE + CELL_SIZE / 2;
-    const half = CELL_SIZE / 2;
-    const c = remapColor(cell.color, this.visualTheme);
-    ctx.save();
-    ctx.translate(px, py);
-    ctx.scale(cell.scale, cell.scale);
-    ctx.globalAlpha = cell.alpha;
-    const grad = ctx.createLinearGradient(-half, -half, half * 0.4, half);
-    grad.addColorStop(0, lightenColor(c, 28));
-    grad.addColorStop(0.35, c);
-    grad.addColorStop(1, darkenColor(c, 30));
-    ctx.fillStyle = grad;
-    ctx.fillRect(-half + 1, -half + 1, CELL_SIZE - 2, CELL_SIZE - 2);
-    ctx.restore();
+  /** Released cubes fall on top of the board until they leave the bottom of the canvas. */
+  drawPeelCubes(ctx) {
+    if (this.peelCubes.length === 0) return;
+    const size = CELL_SIZE / CUBES_PER_SIDE;
+    const half = size / 2;
+    const dt = this.stepSeconds;
+    for (const cube of this.peelCubes) {
+      if (cube.wait > 0) {
+        cube.wait -= dt;
+      } else {
+        cube.vy += CUBE_GRAVITY * dt;
+        cube.x += cube.vx * dt;
+        cube.y += cube.vy * dt;
+        cube.rotation += cube.spin * dt;
+        cube.tumble += cube.tumbleSpeed * dt;
+      }
+      const grow = 1 + (Math.max(0, cube.y - cube.startY) / ROWS) * CUBE_GROWTH;
+      ctx.save();
+      ctx.translate(cube.x * CELL_SIZE, cube.y * CELL_SIZE);
+      ctx.rotate(cube.rotation);
+      ctx.scale(grow * (0.85 + 0.15 * Math.cos(cube.tumble)), grow * (0.85 + 0.15 * Math.sin(cube.tumble)));
+      ctx.drawImage(cube.sprite, -half, -half, size, size);
+      ctx.restore();
+    }
+    this.peelCubes = this.peelCubes.filter(cube => cube.y < ROWS + 2);
   }
 
   drawLockPulse(ctx) {
@@ -584,24 +541,6 @@ class EffectsEngine {
     lp.scale += (1 - lp.scale) * 0.3;
     lp.alpha *= 0.82;
     if (lp.alpha < 0.02) this.lockPulse = null;
-  }
-
-  drawShockwaves(ctx) {
-    if (this.shockwaves.length === 0) return;
-    for (const sw of this.shockwaves) {
-      ctx.save();
-      ctx.globalAlpha = sw.alpha;
-      ctx.strokeStyle = sw.color;
-      ctx.lineWidth = sw.lineWidth;
-      ctx.beginPath();
-      ctx.arc(sw.cx, sw.cy, sw.radius, 0, Math.PI * 2);
-      ctx.stroke();
-      ctx.restore();
-      sw.radius += 2.5;
-      sw.alpha *= 0.975;
-      sw.lineWidth *= 0.99;
-    }
-    this.shockwaves = this.shockwaves.filter(sw => sw.alpha > 0.01 && sw.radius < sw.maxRadius);
   }
 
   drawFloatingTexts(ctx) {
@@ -706,7 +645,7 @@ class EffectsEngine {
   }
 
   drawBoardEdgeGlow(ctx, w, h) {
-    const intensity = this.clearAnimTimer > 0 ? 0.4 : 0.08;
+    const intensity = 0.08;
     const color = this.dangerLevel > 0.5 ? '255,60,60' : '90,176,255';
     // Left edge
     const left = ctx.createLinearGradient(0, 0, 6, 0);

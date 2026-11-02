@@ -467,24 +467,8 @@ class Game {
         this.#lockStartTime = timestamp;
       }
 
-      // Cascade: check if falling blocks formed new complete lines
-      const cascade = this.#board.clearLines();
-      if (cascade.linesCleared > 0) {
-        const result = this.#scoring.addLineClear(cascade.linesCleared, 'none');
-        this.#renderer.triggerLineClearEffect(cascade.clearedRows, cascade.clearedRowColors);
-        this.#renderer.triggerFallingCells(cascade.fallingCells);
-        this.#renderer.triggerComboText(`CASCADE ${cascade.linesCleared}`, cascade.clearedRows[0]);
-        if (result.leveledUp) {
-          this.#sound.playLevelUp();
-          this.#renderer.triggerLevelUpEffect(this.#scoring.level);
-        }
-        // Stay in animating state — don't flush input yet
-        this.#wasAnimating = true;
-        this.#render();
-        this.#animFrameId = requestAnimationFrame((t) => this.#gameLoop(t));
-        return true;
-      }
-
+      // The next piece enters once the stack has finished sliding.
+      if (!this.#currentPiece) this.#spawnPiece();
       this.#flushInputBuffer();
     }
     return false;
@@ -681,6 +665,12 @@ class Game {
 
     if (this.#board.isTopBlocked()) {
       this.#gameOver();
+      return;
+    }
+
+    // No piece on the board during a line clear; #handleAnimationPause spawns the next one.
+    if (linesCleared > 0) {
+      this.#currentPiece = null;
       return;
     }
 

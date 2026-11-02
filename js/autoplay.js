@@ -42,7 +42,7 @@ class AutoPlayer {
     let rotations = (best.rotation - piece.rotation + 4) % 4;
     if (rotations === 3) rotations = -1; // CCW is faster
     for (let i = 0; i < Math.abs(rotations); i++) {
-      moves.push('rotateCW');
+      moves.push(rotations < 0 ? 'rotateCCW' : 'rotateCW');
     }
 
     // Horizontal movement

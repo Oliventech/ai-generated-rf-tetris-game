@@ -31,7 +31,7 @@ A modern Tetris clone that runs directly in your browser with zero dependencies 
 All sounds are generated procedurally using the **Web Audio API** — no audio files needed:
 
 - **9 selectable sound themes**: Glass Shatter, Concrete Break, Crystal Chime, Metal Clang, Ice Crack, Wood Knock, Plastic Pop, Gold Ring, Silver Chime
-- Per-row highlight and cell pop sounds synced to line clear animations
+- Row sounds synced to the line clear animation
 - Dramatic line clear effects with shattering/breaking sounds
 - Impact thuds on hard drop, crystalline clicks on rotation
 - Escalating drama for Tetris (4-line) clears
@@ -41,10 +41,10 @@ All sounds are generated procedurally using the **Web Audio API** — no audio f
 
 ### Visual Effects
 
-- **Multi-phase line clear**: row highlight → cell shrink → particle burst → shockwave
-- **Falling cell animation** with gravity physics and landing glow
+- **Peeling line clear**: full rows come loose, then blocks let go left to right and tumble off the board in an arc; multi-line clears peel together as one thick ribbon
+- **Sliding stack**: the rows above settle as one solid slab under gravity, and holes stay where they are
 - **Per-theme cell rendering** — each of the 9 themes has a distinct visual style for both board cells and preview panels
-- Screen shake on hard drops and line clears
+- Screen shake on hard drops
 - Piece trail motion blur
 - Lock bounce with squash-and-stretch
 - Lock pulse glow on placed pieces
@@ -77,7 +77,7 @@ This project follows SOLID principles adapted for a vanilla JavaScript ES module
 - **Single Responsibility** — Each module has one clear purpose: `Board` manages the grid and collision, `Piece` defines shapes and rotation, `Renderer` handles canvas drawing, `SoundEngine` manages audio, `Scoring` tracks points and levels, `InputHandler` processes keyboard and touch, `EffectsEngine` runs visual animations, `AutoPlayer` drives AI demo mode.
 - **Open/Closed** — New sound themes are added by creating a new theme module in `js/sounds/` and registering it in the `THEME_MAP` — no modification to the `SoundEngine` dispatcher. New visual themes follow the same pattern via dispatch tables in `cell-themes.js`.
 - **Liskov Substitution** — All 9 sound theme modules expose the same interface (spawn, rotate, lock, hardDrop, lineClear, etc.). Any theme can be swapped at runtime without affecting the sound engine.
-- **Interface Segregation** — The `EffectsEngine` exposes granular methods (`drawVanishingRows`, `drawFallingCells`, `drawShockwaves`, etc.) so the `Renderer` only calls what it needs per frame.
+- **Interface Segregation** — The `EffectsEngine` exposes granular methods (`drawPeelingRows`, `drawPeelCubes`, `drawFallingCells`, etc.) so the `Renderer` only calls what it needs per frame.
 - **Dependency Inversion** — High-level modules (`Game`) depend on abstractions. Sound callbacks are injected into the renderer via `setSoundCallbacks()`. The renderer doesn't know about the sound engine directly.
 
 ### Design Patterns Used
@@ -93,7 +93,7 @@ This project follows SOLID principles adapted for a vanilla JavaScript ES module
 
 ### Coding Standards
 
-- **No file exceeds 1,000 lines** — largest is `game.js` at 863 lines
+- **Files stay around 1,000 lines or less** — largest is `game.js` at 1,018 lines
 - **No function exceeds 50 lines** — complex methods are split into focused helpers (e.g., `Game` constructor uses 7 `#init*()` methods, `drawFrame` delegates to 6 private helper methods)
 - **ES2020+ features** — private class fields (`#field`), optional chaining (`?.`), nullish coalescing, `Object.freeze()`, arrow functions, template literals
 - **`const`/`let` only** — no `var` anywhere
@@ -119,9 +119,10 @@ js/
   renderer.js                     — Canvas rendering, delegates to effects/themes
   scoring.js                      — Score, level, combo, T-spin, B2B tracking
   autoplay.js                     — AI demo player with heuristic evaluation
+  demo-cycler.js                  — Cycles settings during demo mode
   rendering/
-    effects.js                    — EffectsEngine: particles, shockwaves, vanish,
-                                    falling cells, screen shake, danger zone
+    effects.js                    — EffectsEngine: line clear peel, sliding stack,
+                                    particles, screen shake, danger zone
     cell-themes.js                — Per-theme cell drawing (9 themes), dispatch tables
     particles.js                  — Particle class, star field, constants
   sounds/
@@ -222,7 +223,7 @@ Each skill includes a `SKILL.md` with recipes and a `references/` folder with dr
 | D | Demo mode |
 
 ### Mobile
-Tap the on-screen buttons: **◀ ▼ ▶** for movement, **↻** to rotate, **HOLD** to hold, **DROP** for hard drop.
+Swipe left/right to move, swipe down to hard drop, tap to rotate, two-finger tap to hold. The ☰ button opens pause, volume and settings.
 
 ## Run Locally
 
