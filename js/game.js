@@ -53,7 +53,7 @@ class Game {
   #lastPiecePos = null; // for trail tracking
   #demoFrozen = false;   // true during demo setting changes
   #demoFreezeTime = 0;   // timestamp when freeze started (safety timeout)
-  #playerSpeed = '2';    // the clear speed the player chose, restored when the demo stops
+  #playerSpeed = '1';    // the clear speed the player chose, restored when the demo stops
 
   constructor() {
     this.#board = new Board();
@@ -116,6 +116,7 @@ class Game {
       onRowHighlight: (rowIndex) => this.#sound.playRowHighlight(rowIndex),
       onCellPop: (col, totalCols) => this.#sound.playCellPop(col, totalCols),
       onRowCleared: (rowIndex) => this.#sound.playRowCleared(rowIndex),
+      onPeelStart: (rows, sweep, delay) => this.#sound.playClearStart(rows, sweep, delay),
     });
   }
 
@@ -457,6 +458,7 @@ class Game {
   }
 
   #wasAnimating = false;
+  #lastClearRows = 1;
 
   #handleAnimationPause(timestamp) {
     if (this.#renderer.isAnimating) {
@@ -467,6 +469,8 @@ class Game {
     }
     if (this.#wasAnimating) {
       this.#wasAnimating = false;
+      this.#sound.playStackLand(this.#lastClearRows);
+      this.#renderer.triggerStackLand(this.#lastClearRows);
       this.#lastDropTime = timestamp;
       this.#lastAutoTime = timestamp;
       if (this.#lockTimer !== null) {
@@ -690,6 +694,7 @@ class Game {
   /** Score a line clear and start its animation. */
   #registerClear(clear, tSpinType) {
     const result = this.#scoring.addLineClear(clear.linesCleared, tSpinType);
+    this.#lastClearRows = clear.linesCleared;
     this.#renderer.triggerLineClearEffect(clear.clearedRows, clear.clearedRowColors);
     this.#renderer.triggerFallingCells(clear.fallingCells);
     this.#showClearFeedback(tSpinType, clear.linesCleared, result, clear.clearedRows);
@@ -853,7 +858,7 @@ class Game {
       const dt = document.getElementById('demo-theme');
       const dl = document.getElementById('demo-speed-label');
       if (dv) dv.value = document.getElementById('volume-slider')?.value || 70;
-      if (ds) ds.value = document.getElementById('speed-slider')?.value || '2';
+      if (ds) ds.value = document.getElementById('speed-slider')?.value || '1';
       if (dt) dt.value = document.getElementById('sound-theme')?.value || 'glass';
       if (dl) dl.textContent = SPEED_LABELS[Number(ds?.value || 2)];
       if (this.#state !== 'playing') {

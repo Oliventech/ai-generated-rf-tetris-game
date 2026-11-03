@@ -52,7 +52,7 @@ class Renderer {
   // Sound callbacks for animation-synced audio
 
   // Animation speed multiplier (1 = normal, 2 = 2× faster)
-  #animSpeed = 4;
+  #animSpeed = 2;
 
   // Visual theme for block rendering (matches sound theme)
   #visualTheme = 'glass';
@@ -76,7 +76,7 @@ class Renderer {
     this.#gameCtx = gameCanvas.getContext('2d');
 
     // Sound callbacks default to no-ops
-    this.#fx.soundCallbacks = { onRowHighlight: () => {}, onCellPop: () => {}, onRowCleared: () => {} };
+    this.#fx.soundCallbacks = { onRowHighlight: () => {}, onCellPop: () => {}, onRowCleared: () => {}, onPeelStart: () => {} };
 
     // Rich multi-stop background gradient
     this.#bgGradient = this.#gameCtx.createLinearGradient(0, 0, 0, ROWS * CELL_SIZE);
@@ -118,6 +118,11 @@ class Renderer {
   triggerLineClearEffect(clearedRows, clearedRowColors) {
     this.#fx.startPeel(clearedRows, clearedRowColors);
     this.#fx.starSpeedBoost = 2 + clearedRows.length;
+  }
+
+  /** A small thump as the stack settles after a clear. */
+  triggerStackLand(rows) {
+    this.#fx.shakeAmount = Math.max(this.#fx.shakeAmount, 1.5 + rows);
   }
 
   /**

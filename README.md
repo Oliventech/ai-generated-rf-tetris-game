@@ -32,6 +32,7 @@ All sounds are generated procedurally using the **Web Audio API** — no audio f
 
 - **9 selectable sound themes**: Glass Shatter, Concrete Break, Crystal Chime, Metal Clang, Ice Crack, Wood Knock, Plastic Pop, Gold Ring, Silver Chime
 - Row sounds synced to the line clear animation
+- **Clear cascade** (`js/sounds/peel-sound.js`): a clatter of pitched knocks that pans left to right with the sweep, a noise wash that swells as the ribbon thickens, and a rising chord that rings out after it; every theme supplies its own voice, and the chord changes key on combos. A soft thump and screen nudge mark the stack landing
 - Dramatic line clear effects with shattering/breaking sounds
 - Impact thuds on hard drop, crystalline clicks on rotation
 - Escalating drama for Tetris (4-line) clears

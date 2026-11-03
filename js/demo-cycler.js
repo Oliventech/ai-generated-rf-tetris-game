@@ -32,16 +32,16 @@ const SPEED_INDEX_LABELS = { '0': '0.25×', '1': '0.5×', '2': '1×', '3': '2×'
 const DEMO_SEQUENCE = [
   { type: 'theme', value: 'concrete', label: '🧱 Concrete Break' },
   { type: 'theme', value: 'crystal', label: '💎 Crystal Chime' },
-  { type: 'speed', value: '1', label: '⚡ Speed: 0.5×' },
+  { type: 'speed', value: '2', label: '⚡ Speed: 1×' },
   { type: 'theme', value: 'metal', label: '⚙️ Metal Clang' },
   { type: 'theme', value: 'ice', label: '❄️ Ice Crack' },
   { type: 'theme', value: 'wood', label: '🪵 Wood Snap' },
-  { type: 'speed', value: '2', label: '⚡ Speed: 1×' },
+  { type: 'speed', value: '1', label: '⚡ Speed: 0.5×' },
   { type: 'theme', value: 'plastic', label: '🧩 Plastic Pop' },
   { type: 'theme', value: 'gold', label: '🥇 Gold Ring' },
   { type: 'speed', value: '3', label: '⚡ Speed: 2×' },
   { type: 'theme', value: 'silver', label: '🥈 Silver Chime' },
-  { type: 'speed', value: '2', label: '⚡ Speed: 1×' },
+  { type: 'speed', value: '1', label: '⚡ Speed: 0.5×' },
   { type: 'theme', value: 'glass', label: '🔮 Glass Shatter' },
 ];
 
@@ -196,7 +196,7 @@ export class DemoCycler {
         return THEME_LABELS[val] || val;
       }
       case 'speed': {
-        const val = document.getElementById('demo-speed')?.value || '2';
+        const val = document.getElementById('demo-speed')?.value || '1';
         return `⚡ Speed: ${SPEED_INDEX_LABELS[val] || val}`;
       }
       default:

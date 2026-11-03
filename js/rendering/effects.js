@@ -9,7 +9,7 @@ const CELL_SIZE = 32;
 const COLS = 10;
 const ROWS = 20;
 
-// Line clear timing, in animation time. An animSpeed of 2 plays it in real time; the default is 4.
+// Line clear timing, in animation time. An animSpeed of 2 plays it in real time; the default is 2 (the 0.5× stop).
 const LOOSEN_MS = 100;          // rows sit loose before the first block lets go
 const SWEEP_MS = 750;           // first to last column release, left to right
 const RELEASE_JITTER_MS = 15;   // keeps stacked rows from releasing in perfect lockstep
@@ -20,7 +20,7 @@ const MAX_FRAME_MS = 50;        // a resumed or stalled frame must not jump the 
 const LOOSE_SCALE = 0.86;       // blocks shrink in their row while waiting to let go
 const SLIDE_GRAVITY = 52;       // rows/s² for the stack settling after a clear
 const CUBE_GRAVITY = 44;        // rows/s² for released blocks
-const CUBES_PER_SIDE = 2;       // each block breaks into a 2×2 of smaller cubes
+const CUBES_PER_SIDE = 3;       // each block breaks into a 3×3 of smaller cubes
 const POP_SPEED = 6;            // rows/s upward kick when a cube lets go
 const CUBE_DRIFT = 0.8;         // rows/s of sideways scatter
 const CUBE_SPIN = 12;           // rad/s
@@ -59,7 +59,7 @@ class EffectsEngine {
   pieceTrail = [];
   lockBounce = null;
   soundCallbacks = null;
-  animSpeed = 4;
+  animSpeed = 2;
   visualTheme = 'glass';
 
   get isAnimating() {
@@ -414,6 +414,8 @@ class EffectsEngine {
     this.peelElapsed = 0;
     this.peelEnd = lastRelease + SLIDE_DELAY_MS;
     this.vanishPhase = true;
+    const realSeconds = 2 / this.animSpeed;
+    this.soundCallbacks.onPeelStart?.(count, (SWEEP_MS / 1000) * realSeconds, (LOOSEN_MS / 1000) * realSeconds);
   }
 
   drawPeelingRows(ctx) {

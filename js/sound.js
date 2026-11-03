@@ -20,6 +20,7 @@ import { woodTheme } from './sounds/wood-theme.js';
 import { plasticTheme } from './sounds/plastic-theme.js';
 import { goldTheme } from './sounds/gold-theme.js';
 import { silverTheme } from './sounds/silver-theme.js';
+import { playPeel, playLand } from './sounds/peel-sound.js';
 
 const SOUND_THEMES = Object.freeze([
   'glass', 'concrete', 'crystal', 'metal', 'ice',
@@ -48,7 +49,7 @@ class SoundEngine {
   #combo = 0;
   #lastClearTime = 0;
   #soundTheme = 'glass';
-  #animSpeed = 4;
+  #animSpeed = 2;
   #sc = null;
 
   static get themes() { return SOUND_THEMES; }
@@ -149,6 +150,20 @@ class SoundEngine {
     this.#lastClearTime = now;
     const comboShift = this.#combo * 0.03;
     this.#theme().lineClear(this.#sc, t, intensity, totalDur, vol, comboShift);
+  }
+
+  /** Cascade for a clear whose sweep lasts `sweep` real seconds, starting `delay` seconds from now. */
+  playClearStart(rows, sweep, delay = 0) {
+    if (!this.#ctx || this.#muted) return;
+    const now = performance.now();
+    this.#combo = now - this.#lastClearTime < 3000 ? this.#combo + 1 : 0;
+    this.#lastClearTime = now;
+    playPeel(this.#sc, this.#soundTheme, { rows: Math.min(rows, 4), sweep, delay, combo: this.#combo });
+  }
+
+  playStackLand(rows) {
+    if (!this.#ctx || this.#muted) return;
+    playLand(this.#sc, this.#soundTheme, Math.min(rows, 4));
   }
 
   playLevelUp() {
